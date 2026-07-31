@@ -25,7 +25,8 @@ const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/studio
 
 app.use(
   cors({
-    origin: 'http://localhost:5173',
+    // Reflect request Origin so Firebase + local Vite both work after deploy
+    origin: true,
     credentials: true,
   })
 );
