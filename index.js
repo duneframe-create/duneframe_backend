@@ -3,8 +3,8 @@ require('dotenv').config();
 const path = require('path');
 const express = require('express');
 const cors = require('cors');
-const mongoose = require('mongoose');
 
+const connectDB = require('./db');
 const projectsRouter = require('./routes/projects');
 const teamRouter = require('./routes/team');
 const contactRouter = require('./routes/contact');
@@ -17,11 +17,11 @@ const partnersRouter = require('./routes/partners');
 const testimonialsRouter = require('./routes/testimonials');
 const postsRouter = require('./routes/posts');
 const settingsRouter = require('./routes/settings');
+const homeRouter = require('./routes/home');
 const seedDefaultsIfEmpty = require('./seedDefaults');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
-const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/studio-site';
 
 app.use(
   cors({
@@ -36,10 +36,22 @@ app.use(express.urlencoded({ extended: true }));
 
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
+// Ensure DB is ready for every request (cached on warm Vercel instances)
+app.use(async (req, res, next) => {
+  try {
+    await connectDB();
+    next();
+  } catch (error) {
+    console.error('MongoDB connection error:', error.message);
+    res.status(503).json({ message: 'Database unavailable', error: error.message });
+  }
+});
+
 app.get('/api/health', (_req, res) => {
   res.json({ status: 'ok', service: 'dune-frame-server' });
 });
 
+app.use('/api/home', homeRouter);
 app.use('/api/projects', projectsRouter);
 app.use('/api/team', teamRouter);
 app.use('/api/contact', contactRouter);
@@ -62,10 +74,12 @@ app.use((err, _req, res, _next) => {
 
 async function start() {
   try {
-    await mongoose.connect(MONGODB_URI);
-    console.log('MongoDB connected');
+    await connectDB();
 
-    await seedDefaultsIfEmpty();
+    // Don't block server boot on seeding (important for Vercel cold starts)
+    seedDefaultsIfEmpty().catch((err) => {
+      console.error('Seed skipped/failed:', err.message);
+    });
 
     app.listen(PORT, () => {
       console.log(`Server running on http://localhost:${PORT}`);
@@ -76,4 +90,10 @@ async function start() {
   }
 }
 
-start();
+// Local / long-running process
+if (require.main === module) {
+  start();
+}
+
+// Vercel serverless export
+module.exports = app;
